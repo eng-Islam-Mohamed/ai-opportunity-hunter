@@ -18,6 +18,8 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   headers.delete("cookie");
   headers.delete("x-internal-api-token");
   headers.set("x-internal-api-token", internalToken);
+  const userToken = request.cookies.get("oh_user_session")?.value;
+  if (userToken) headers.set("authorization", "Bearer " + userToken);
 
   const response = await fetch(upstream, {
     method: request.method,
@@ -32,4 +34,3 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
 
 export const GET = proxy;
 export const POST = proxy;
-

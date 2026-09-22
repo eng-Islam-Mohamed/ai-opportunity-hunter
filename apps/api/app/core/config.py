@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     google_sheets_spreadsheet_id: str | None = None
     export_directory: str = "artifacts/exports"
     backend_internal_token: SecretStr | None = None
+    app_auth_secret: SecretStr | None = None
     allowed_hosts: str = "localhost,127.0.0.1,testserver"
     allowed_cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
@@ -53,6 +54,8 @@ class Settings(BaseSettings):
             raise ValueError("LLM_API_KEY is required when OpenRouter analysis is enabled")
         if self.app_env == "production" and not self.backend_internal_token:
             raise ValueError("BACKEND_INTERNAL_TOKEN is required in production")
+        if self.app_env == "production" and not self.app_auth_secret:
+            raise ValueError("APP_AUTH_SECRET is required in production")
         return self
 
     def host_list(self) -> list[str]:

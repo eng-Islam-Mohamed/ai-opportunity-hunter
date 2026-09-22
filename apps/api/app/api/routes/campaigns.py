@@ -2,15 +2,16 @@ from __future__ import annotations
 
 import os
 import uuid
+from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
-from app.api.deps import DatabaseSession
+from app.api.deps import CurrentUser, DatabaseSession, get_current_user
 from app.core.config import get_settings
-from app.models.campaign import Campaign, CampaignStatus
-from app.models.opportunity import JobExecution
+from app.models.campaign import Campaign, CampaignStatus, DailyCampaignUsage, Workspace
+from app.models.opportunity import JobExecution, Lead
 from app.schemas.campaign import (
     CampaignCreate,
     CampaignRead,
@@ -36,12 +37,32 @@ from app.services.exports import export_campaign_csv
 from app.services.google_sheets import export_campaign_google_sheets
 from app.services.leads import get_lead_detail, list_campaign_leads
 
-router = APIRouter(prefix="/api/v1", tags=["campaigns"])
+router = APIRouter(prefix="/api/v1", tags=["campaigns"], dependencies=[Depends(get_current_user)])
+
+
+async def require_owned_workspace(
+    session: DatabaseSession, workspace_id: uuid.UUID, user: CurrentUser
+) -> Workspace:
+    workspace = await session.get(Workspace, workspace_id)
+    if workspace is None or workspace.owner_user_id != user.id:
+        # Returning 404 avoids confirming another user's workspace identifier.
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return workspace
+
+
+async def require_owned_campaign(
+    session: DatabaseSession, campaign_id: uuid.UUID, user: CurrentUser
+) -> Campaign:
+    campaign = await session.get(Campaign, campaign_id)
+    if campaign is None:
+        raise HTTPException(status_code=404, detail="Campaign not found")
+    await require_owned_workspace(session, campaign.workspace_id, user)
+    return campaign
 
 
 @router.post("/bootstrap", response_model=BootstrapResponse)
-async def bootstrap(session: DatabaseSession) -> BootstrapResponse:
-    return await bootstrap_workspace(session)
+async def bootstrap(session: DatabaseSession, user: CurrentUser) -> BootstrapResponse:
+    return await bootstrap_workspace(session, user.id, name=f"{user.email.split('@')[0]} Workspace")
 
 
 @router.post(
@@ -50,8 +71,9 @@ async def bootstrap(session: DatabaseSession) -> BootstrapResponse:
     status_code=status.HTTP_201_CREATED,
 )
 async def create_service(
-    payload: ServiceCatalogCreate, session: DatabaseSession
+    payload: ServiceCatalogCreate, session: DatabaseSession, user: CurrentUser
 ) -> ServiceCatalogRead:
+    await require_owned_workspace(session, payload.workspace_id, user)
     try:
         item = await ServiceCatalogService(session).create(payload)
     except DomainNotFoundError as exc:
@@ -60,7 +82,10 @@ async def create_service(
 
 
 @router.post("/campaigns", response_model=CampaignRead, status_code=status.HTTP_201_CREATED)
-async def create_campaign(payload: CampaignCreate, session: DatabaseSession) -> CampaignRead:
+async def create_campaign(
+    payload: CampaignCreate, session: DatabaseSession, user: CurrentUser
+) -> CampaignRead:
+    await require_owned_workspace(session, payload.workspace_id, user)
     try:
         campaign = await CampaignService(session).create(payload)
     except DomainNotFoundError as exc:
@@ -72,18 +97,18 @@ async def create_campaign(payload: CampaignCreate, session: DatabaseSession) -> 
 
 @router.get("/campaigns", response_model=list[CampaignRead])
 async def list_campaigns(
-    session: DatabaseSession, workspace_id: Annotated[uuid.UUID, Query()]
+    session: DatabaseSession, workspace_id: Annotated[uuid.UUID, Query()], user: CurrentUser
 ) -> list[CampaignRead]:
+    await require_owned_workspace(session, workspace_id, user)
     campaigns = await CampaignService(session).list(workspace_id)
     return [CampaignRead.model_validate(campaign) for campaign in campaigns]
 
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignRead)
-async def get_campaign(campaign_id: uuid.UUID, session: DatabaseSession) -> CampaignRead:
-    try:
-        campaign = await CampaignService(session).get(campaign_id)
-    except DomainNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+async def get_campaign(
+    campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
+) -> CampaignRead:
+    campaign = await require_owned_campaign(session, campaign_id, user)
     return CampaignRead.model_validate(campaign)
 
 
@@ -92,12 +117,23 @@ async def get_campaign(campaign_id: uuid.UUID, session: DatabaseSession) -> Camp
     response_model=CampaignExecutionRead,
     status_code=status.HTTP_202_ACCEPTED,
 )
-async def start_campaign(campaign_id: uuid.UUID, session: DatabaseSession) -> CampaignExecutionRead:
-    campaign = await session.get(Campaign, campaign_id)
-    if campaign is None:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+async def start_campaign(
+    campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
+) -> CampaignExecutionRead:
+    campaign = await require_owned_campaign(session, campaign_id, user)
     if is_running(campaign_id):
         raise HTTPException(status_code=409, detail="Campaign is already running")
+    usage = await session.scalar(
+        select(DailyCampaignUsage).where(
+            DailyCampaignUsage.user_id == user.id, DailyCampaignUsage.usage_date == date.today()
+        )
+    )
+    if usage is None:
+        usage = DailyCampaignUsage(user_id=user.id, usage_date=date.today(), campaign_runs=0)
+        session.add(usage)
+    if usage.campaign_runs >= 5:
+        raise HTTPException(status_code=429, detail="Daily limit reached. Try again tomorrow.")
+    usage.campaign_runs += 1
     campaign.status = CampaignStatus.QUEUED
     await session.commit()
     if os.getenv("VERCEL") == "1":
@@ -117,11 +153,9 @@ async def start_campaign(campaign_id: uuid.UUID, session: DatabaseSession) -> Ca
 
 @router.get("/campaigns/{campaign_id}/execution", response_model=CampaignExecutionRead)
 async def campaign_execution(
-    campaign_id: uuid.UUID, session: DatabaseSession
+    campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
 ) -> CampaignExecutionRead:
-    campaign = await session.get(Campaign, campaign_id)
-    if campaign is None:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign = await require_owned_campaign(session, campaign_id, user)
     job = await session.scalar(
         select(JobExecution)
         .where(JobExecution.campaign_id == campaign_id)
@@ -139,11 +173,9 @@ async def campaign_execution(
 
 @router.post("/campaigns/{campaign_id}/cancel", response_model=CampaignExecutionRead)
 async def cancel_campaign(
-    campaign_id: uuid.UUID, session: DatabaseSession
+    campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
 ) -> CampaignExecutionRead:
-    campaign = await session.get(Campaign, campaign_id)
-    if campaign is None:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+    campaign = await require_owned_campaign(session, campaign_id, user)
     if is_running(campaign_id):
         raise HTTPException(
             status_code=409,
@@ -159,12 +191,19 @@ async def cancel_campaign(
 
 
 @router.get("/campaigns/{campaign_id}/leads", response_model=list[LeadListItem])
-async def campaign_leads(campaign_id: uuid.UUID, session: DatabaseSession) -> list[LeadListItem]:
+async def campaign_leads(
+    campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
+) -> list[LeadListItem]:
+    await require_owned_campaign(session, campaign_id, user)
     return await list_campaign_leads(session, campaign_id)
 
 
 @router.get("/leads/{lead_id}", response_model=LeadDetail)
-async def lead_detail(lead_id: uuid.UUID, session: DatabaseSession) -> LeadDetail:
+async def lead_detail(lead_id: uuid.UUID, session: DatabaseSession, user: CurrentUser) -> LeadDetail:
+    lead = await session.get(Lead, lead_id)
+    if lead is None:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    await require_owned_campaign(session, lead.campaign_id, user)
     result = await get_lead_detail(session, lead_id)
     if result is None:
         raise HTTPException(status_code=404, detail="Lead not found")
@@ -172,15 +211,16 @@ async def lead_detail(lead_id: uuid.UUID, session: DatabaseSession) -> LeadDetai
 
 
 @router.post("/campaigns/{campaign_id}/export/csv", response_model=ExportRead)
-async def export_csv(campaign_id: uuid.UUID, session: DatabaseSession) -> ExportRead:
-    campaign = await session.get(Campaign, campaign_id)
-    if campaign is None:
-        raise HTTPException(status_code=404, detail="Campaign not found")
+async def export_csv(campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser) -> ExportRead:
+    await require_owned_campaign(session, campaign_id, user)
     return await export_campaign_csv(session, campaign_id, get_settings().export_directory)
 
 
 @router.post("/campaigns/{campaign_id}/export/google-sheets", response_model=ExportRead)
-async def export_google_sheets(campaign_id: uuid.UUID, session: DatabaseSession) -> ExportRead:
+async def export_google_sheets(
+    campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
+) -> ExportRead:
+    await require_owned_campaign(session, campaign_id, user)
     settings = get_settings()
     if (
         settings.google_service_account_json is None

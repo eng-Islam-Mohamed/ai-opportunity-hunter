@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const publicPaths = new Set(["/", "/demo", "/login", "/api/auth/login", "/api/auth/logout"]);
+const publicPaths = new Set([
+  "/",
+  "/demo",
+  "/login",
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/logout",
+]);
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -8,14 +15,8 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const expectedSession = process.env.OPERATOR_SESSION_TOKEN;
-  // Local development stays frictionless. Production is only made available
-  // once its server-only operator credentials have been configured.
-  if (process.env.NODE_ENV !== "production" && !expectedSession) {
-    return NextResponse.next();
-  }
-  const session = request.cookies.get("oh_operator_session")?.value;
-  if (expectedSession && session === expectedSession) {
+  const session = request.cookies.get("oh_user_session")?.value;
+  if (session) {
     return NextResponse.next();
   }
 

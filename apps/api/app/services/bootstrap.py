@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -54,12 +56,14 @@ DEFAULT_SERVICES = [
 
 
 async def bootstrap_workspace(
-    session: AsyncSession, name: str = "Default Workspace"
+    session: AsyncSession, user_id: uuid.UUID | None = None, name: str = "My Workspace"
 ) -> BootstrapResponse:
-    workspace = await session.scalar(select(Workspace).where(Workspace.name == name).limit(1))
+    workspace = await session.scalar(
+        select(Workspace).where(Workspace.owner_user_id == user_id).limit(1)
+    )
     created = workspace is None
     if workspace is None:
-        workspace = Workspace(name=name)
+        workspace = Workspace(name=name, owner_user_id=user_id)
         session.add(workspace)
         await session.flush()
     existing = list(

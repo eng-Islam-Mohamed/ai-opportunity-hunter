@@ -1,4 +1,11 @@
-from app.models.campaign import Campaign, CampaignService, ServiceCatalogItem, Workspace
+from app.models.campaign import (
+    Campaign,
+    CampaignService,
+    DailyCampaignUsage,
+    ServiceCatalogItem,
+    User,
+    Workspace,
+)
 from app.models.opportunity import (
     CampaignCompany,
     Company,
@@ -19,6 +26,7 @@ __all__ = [
     "Campaign",
     "CampaignCompany",
     "CampaignService",
+    "DailyCampaignUsage",
     "Company",
     "CompanyLocation",
     "ContactPoint",
@@ -33,4 +41,5 @@ __all__ = [
     "ServiceCatalogItem",
     "SolutionRecommendation",
     "Workspace",
+    "User",
 ]
