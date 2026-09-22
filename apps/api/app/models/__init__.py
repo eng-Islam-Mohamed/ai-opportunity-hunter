@@ -1,0 +1,36 @@
+from app.models.campaign import Campaign, CampaignService, ServiceCatalogItem, Workspace
+from app.models.opportunity import (
+    CampaignCompany,
+    Company,
+    CompanyLocation,
+    ContactPoint,
+    DigitalAsset,
+    Evidence,
+    ExportJob,
+    JobExecution,
+    Lead,
+    LeadScore,
+    ProblemHypothesis,
+    ProviderEntity,
+    SolutionRecommendation,
+)
+
+__all__ = [
+    "Campaign",
+    "CampaignCompany",
+    "CampaignService",
+    "Company",
+    "CompanyLocation",
+    "ContactPoint",
+    "DigitalAsset",
+    "Evidence",
+    "ExportJob",
+    "JobExecution",
+    "Lead",
+    "LeadScore",
+    "ProblemHypothesis",
+    "ProviderEntity",
+    "ServiceCatalogItem",
+    "SolutionRecommendation",
+    "Workspace",
+]
