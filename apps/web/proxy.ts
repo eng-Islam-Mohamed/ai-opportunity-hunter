@@ -9,6 +9,11 @@ export function proxy(request: NextRequest) {
   }
 
   const expectedSession = process.env.OPERATOR_SESSION_TOKEN;
+  // Local development stays frictionless. Production is only made available
+  // once its server-only operator credentials have been configured.
+  if (process.env.NODE_ENV !== "production" && !expectedSession) {
+    return NextResponse.next();
+  }
   const session = request.cookies.get("oh_operator_session")?.value;
   if (expectedSession && session === expectedSession) {
     return NextResponse.next();
