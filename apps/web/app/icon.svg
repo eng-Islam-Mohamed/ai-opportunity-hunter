@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Opportunity Hunter">
+  <defs>
+    <linearGradient id="surface" x1="0" y1="0" x2="1" y2="1">
+      <stop stop-color="#e6ffbd"/>
+      <stop offset="1" stop-color="#acd766"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="17" fill="url(#surface)"/>
+  <path fill="#172c22" d="M19 19h11v11H19zm15 0h11v11H34zM19 34h11v11H19z"/>
+  <path fill="#527545" d="M34 34h11v11H34z"/>
+</svg>
