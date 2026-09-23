@@ -46,7 +46,10 @@ export function OpportunityDashboard() {
   }, [loadCampaigns]);
 
   async function createAndRun(values: { name: string; location: string; sector: string; maximum: number }) {
-    if (!bootstrap) return;
+    if (!bootstrap) {
+      setMessage("Workspace is not connected yet. Refresh the page and sign in again.");
+      return;
+    }
     setBusy(true);
     setMessage("Creating campaign…");
     try {
@@ -175,6 +178,7 @@ export function OpportunityDashboard() {
         <section className="section-block research-section" aria-labelledby="research-heading">
           <div className="section-title"><span className="section-number">01</span><div><span className="eyebrow">Define the search</span><h2 id="research-heading">A focused brief gets better leads.</h2></div><p>Choose a market, a business type and a search limit. The engine turns that brief into ranked opportunities.</p></div>
           <CampaignForm busy={busy || !bootstrap} onCreate={createAndRun} />
+          <p role="status" aria-live="polite">{message}</p>
         </section>
 
         <section className="section-block results-section" aria-labelledby="results-heading">

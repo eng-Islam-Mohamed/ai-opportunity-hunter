@@ -13,10 +13,11 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   const { path } = await context.params;
   const upstream = new URL(path.join("/"), baseUrl.replace(/\/$/, "") + "/");
   upstream.search = request.nextUrl.search;
-  const headers = new Headers(request.headers);
-  headers.delete("host");
-  headers.delete("cookie");
-  headers.delete("x-internal-api-token");
+  // Forward only application headers, never browser transport/framing headers.
+  const headers = new Headers();
+  headers.set("content-type", "application/json");
+  headers.set("accept", "application/json");
+  headers.set("accept-encoding", "identity");
   headers.set("x-internal-api-token", internalToken);
   const userToken = request.cookies.get("oh_user_session")?.value;
   if (userToken) headers.set("authorization", "Bearer " + userToken);
@@ -29,6 +30,13 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   });
   const responseHeaders = new Headers(response.headers);
   responseHeaders.delete("set-cookie");
+  // fetch decodes compressed responses. Their original encoding/length no longer
+  // describe response.body; forwarding them causes browser decoding failures.
+  responseHeaders.delete("content-encoding");
+  responseHeaders.delete("content-length");
+  responseHeaders.delete("transfer-encoding");
+  responseHeaders.delete("connection");
+  responseHeaders.set("cache-control", "no-store");
   return new NextResponse(response.body, { status: response.status, headers: responseHeaders });
 }
 
