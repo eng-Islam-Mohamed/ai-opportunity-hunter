@@ -1,8 +1,6 @@
 import type { Bootstrap, Campaign, Lead, LeadDetail } from "./types";
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL ??
-  (process.env.NODE_ENV === "production" ? "/api/backend" : "http://localhost:8000");
+const API_BASE_URL = "/api/backend";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
@@ -10,6 +8,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.location.assign("/login?next=/workspace");
+    }
     const payload = await response.json().catch(() => null);
     throw new Error(payload?.detail ?? `Request failed (${response.status})`);
   }

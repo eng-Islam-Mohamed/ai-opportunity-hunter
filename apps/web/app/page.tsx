@@ -5,7 +5,7 @@ export default function Home() {
     <main className="marketing-page">
       <nav className="marketing-nav">
         <div className="marketing-brand"><span className="marketing-symbol" aria-hidden="true"><i /><i /><i /><i /></span><strong>Opportunity<br />Hunter<span>.</span></strong></div>
-        <div className="marketing-nav-actions"><Link href="/demo">Explore the demo</Link><Link className="nav-workspace-link" href="/login?next=/workspace">Operator sign in <span>↗</span></Link></div>
+        <div className="marketing-nav-actions"><Link href="/demo">Explore the demo</Link><Link className="nav-workspace-link" href="/login?next=/workspace">Sign in / Create account <span>↗</span></Link></div>
       </nav>
       <section className="marketing-hero">
         <div>

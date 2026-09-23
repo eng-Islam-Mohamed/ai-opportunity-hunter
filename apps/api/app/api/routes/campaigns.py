@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import os
 import uuid
-from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 
 from app.api.deps import CurrentUser, DatabaseSession, get_current_user
+from app.api.routes.auth import DAILY_RUN_LIMIT, quota_date
 from app.core.config import get_settings
-from app.models.campaign import Campaign, CampaignStatus, DailyCampaignUsage, Workspace
+from app.models.campaign import Campaign, CampaignStatus, DailyCampaignUsage, User, Workspace
 from app.models.opportunity import JobExecution, Lead
 from app.schemas.campaign import (
     CampaignCreate,
@@ -121,17 +121,22 @@ async def start_campaign(
     campaign_id: uuid.UUID, session: DatabaseSession, user: CurrentUser
 ) -> CampaignExecutionRead:
     campaign = await require_owned_campaign(session, campaign_id, user)
+    # Serialize quota reservations across instances, including the first run of the day.
+    await session.execute(select(User.id).where(User.id == user.id).with_for_update())
+    await session.refresh(campaign)
+    if campaign.status != CampaignStatus.DRAFT:
+        raise HTTPException(status_code=409, detail="This campaign has already been started.")
     if is_running(campaign_id):
         raise HTTPException(status_code=409, detail="Campaign is already running")
     usage = await session.scalar(
         select(DailyCampaignUsage).where(
-            DailyCampaignUsage.user_id == user.id, DailyCampaignUsage.usage_date == date.today()
+            DailyCampaignUsage.user_id == user.id, DailyCampaignUsage.usage_date == quota_date()
         )
     )
     if usage is None:
-        usage = DailyCampaignUsage(user_id=user.id, usage_date=date.today(), campaign_runs=0)
+        usage = DailyCampaignUsage(user_id=user.id, usage_date=quota_date(), campaign_runs=0)
         session.add(usage)
-    if usage.campaign_runs >= 5:
+    if usage.campaign_runs >= DAILY_RUN_LIMIT:
         raise HTTPException(status_code=429, detail="Daily limit reached. Try again tomorrow.")
     usage.campaign_runs += 1
     campaign.status = CampaignStatus.QUEUED

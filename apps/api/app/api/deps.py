@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, status
@@ -15,8 +17,11 @@ async def get_current_user(
 ) -> User:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
-    user = await session.get(User, parse_token(authorization.removeprefix("Bearer ")))
-    if user is None:
+    user_id, credential = parse_token(authorization.removeprefix("Bearer "))
+    user = await session.get(User, user_id)
+    if user is None or not hmac.compare_digest(
+        credential, hashlib.sha256(user.password_hash.encode()).hexdigest()
+    ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     return user
 

@@ -1,16 +1,21 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
-from app.api.deps import DatabaseSession
+from app.api.deps import CurrentUser, DatabaseSession
 from app.core.auth import hash_password, issue_token, verify_password
 from app.models.campaign import DailyCampaignUsage, User
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+DAILY_RUN_LIMIT = 10
+
+
+def quota_date():
+    return datetime.now(UTC).date()
 
 
 class Credentials(BaseModel):
@@ -40,7 +45,8 @@ async def register(payload: Credentials, session: DatabaseSession) -> AuthRespon
     user = User(email=email, password_hash=hash_password(payload.password))
     session.add(user)
     await session.commit()
-    return AuthResponse(access_token=issue_token(user.id), email=user.email, daily_runs_remaining=5)
+    return AuthResponse(access_token=issue_token(user.id, user.password_hash), email=user.email,
+                        daily_runs_remaining=DAILY_RUN_LIMIT)
 
 
 @router.post("/login", response_model=AuthResponse)
@@ -50,11 +56,37 @@ async def login(payload: Credentials, session: DatabaseSession) -> AuthResponse:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
     usage = await session.scalar(
         select(DailyCampaignUsage).where(
-            DailyCampaignUsage.user_id == user.id, DailyCampaignUsage.usage_date == date.today()
+            DailyCampaignUsage.user_id == user.id, DailyCampaignUsage.usage_date == quota_date()
         )
     )
     return AuthResponse(
-        access_token=issue_token(user.id),
+        access_token=issue_token(user.id, user.password_hash),
         email=user.email,
-        daily_runs_remaining=max(0, 5 - (usage.campaign_runs if usage else 0)),
+        daily_runs_remaining=max(0, DAILY_RUN_LIMIT - (usage.campaign_runs if usage else 0)),
     )
+
+
+@router.get("/me")
+async def me(session: DatabaseSession, user: CurrentUser) -> dict:
+    usage = await session.scalar(select(DailyCampaignUsage).where(
+        DailyCampaignUsage.user_id == user.id, DailyCampaignUsage.usage_date == quota_date()
+    ))
+    return {"email": user.email, "daily_limit": DAILY_RUN_LIMIT,
+            "daily_runs_remaining": max(0, DAILY_RUN_LIMIT - (usage.campaign_runs if usage else 0)),
+            "reset_timezone": "UTC"}
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=10, max_length=128)
+
+
+@router.post("/change-password")
+async def change_password(
+    payload: PasswordChange, session: DatabaseSession, user: CurrentUser
+) -> dict:
+    if not verify_password(payload.current_password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Current password is incorrect.")
+    user.password_hash = hash_password(payload.new_password)
+    await session.commit()
+    return {"ok": True}

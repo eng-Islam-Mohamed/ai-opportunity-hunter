@@ -150,7 +150,7 @@ export function OpportunityDashboard() {
       </aside>
 
       <div className="workspace">
-        <div className="topline"><span>Intelligence / Campaign workspace</span><span className="topline-right">OH—01 <span className="topline-separator">/</span> Research desk</span></div>
+        <div className="topline"><span>Intelligence / Campaign workspace</span><a href="/account">Account & daily allowance ↗</a></div>
 
         <header className="hero">
           <div className="hero-copy">

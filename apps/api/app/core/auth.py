@@ -32,17 +32,18 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def issue_token(user_id: uuid.UUID) -> str:
+def issue_token(user_id: uuid.UUID, password_hash: str) -> str:
     secret = get_settings().app_auth_secret
     if secret is None:
         raise RuntimeError("APP_AUTH_SECRET is not configured")
-    payload = {"sub": str(user_id), "exp": int(time.time()) + TOKEN_TTL_SECONDS}
+    payload = {"sub": str(user_id), "exp": int(time.time()) + TOKEN_TTL_SECONDS,
+               "credential": hashlib.sha256(password_hash.encode()).hexdigest()}
     encoded = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode()
     signature = hmac.new(secret.get_secret_value().encode(), encoded.encode(), hashlib.sha256).hexdigest()
     return encoded + "." + signature
 
 
-def parse_token(token: str) -> uuid.UUID:
+def parse_token(token: str) -> tuple[uuid.UUID, str]:
     secret = get_settings().app_auth_secret
     if secret is None or "." not in token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
@@ -54,7 +55,7 @@ def parse_token(token: str) -> uuid.UUID:
         payload = json.loads(base64.urlsafe_b64decode(encoded.encode()))
         if int(payload["exp"]) < time.time():
             raise ValueError
-        return uuid.UUID(payload["sub"])
+        return uuid.UUID(payload["sub"]), payload["credential"]
     except (KeyError, ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required"
