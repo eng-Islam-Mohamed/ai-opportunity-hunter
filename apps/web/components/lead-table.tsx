@@ -15,7 +15,7 @@ export function LeadTable({ leads, onSelect }: LeadTableProps) {
         <tbody>
           {leads.map((lead) => (
             <tr key={lead.lead_id}>
-              <td><strong>{lead.company_name}</strong><small>{lead.location || "Location unverified"}</small></td>
+              <td><strong>{lead.company_name}</strong><small>{lead.location || "Location unverified"}</small>{lead.phone && <a className="lead-contact" href={`tel:${lead.phone.replace(/[^+\d]/g, "")}`}>{lead.phone}</a>}</td>
               <td className="problem-cell">{lead.main_problem || "No supported problem yet"}</td>
               <td className="offer-cell">{lead.recommended_solution || "Awaiting review"}</td>
               <td><span className={`score score-${lead.band.toLowerCase()}`}>{Math.round(lead.final_score)}</span></td>

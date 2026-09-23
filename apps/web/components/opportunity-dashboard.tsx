@@ -161,10 +161,10 @@ export function OpportunityDashboard() {
             <h1>Find the signal.<br /><em>Win the work.</em></h1>
             <p>A clearer view of who needs your services, why they need them, and what to say first.</p>
           </div>
-          <div className="hero-aside" aria-hidden="true">
-            <span className="hero-aside-label">Opportunity / No. 001</span>
-            <div className="hero-orbit"><span className="orbit-core" /><span className="orbit-node orbit-node-one" /><span className="orbit-node orbit-node-two" /></div>
-            <span className="hero-aside-bottom">Research → evidence → action</span>
+          <div className="hero-aside" aria-label="Research workflow">
+            <span className="hero-aside-label">RESEARCH SYSTEM / ACTIVE</span>
+            <div className="hero-workflow"><span>01 <b>Discover</b></span><span>02 <b>Verify</b></span><span>03 <b>Prioritize</b></span></div>
+            <span className="hero-aside-bottom">Evidence before conclusions</span>
           </div>
         </header>
 
